@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Image, View, Button, StyleSheet, Platform } from "react-native";
+import { Text, TouchableOpacity, Image, View, Button, StyleSheet, Platform } from "react-native";
 import { GLView } from "expo-gl";
 import { TextureLoader,  Renderer, loadTextureAsync } from "expo-three";
 import * as THREE from "three";
@@ -215,6 +215,27 @@ export default function App() {
               // Nekustas? Parāda stāvošu kadru
               setSpriteFrame(spriteState.current.direction, 0);
             }
+	    
+	    function MoveButton({ direction, onMove, children }) {
+	    const intervalRef = useRef(null);
+
+	    function handlePressIn() {
+	      onMove(direction); // uzreiz pirmais solis
+	      intervalRef.current = setInterval(() => onMove(direction), 100); // ik 100ms atkārto
+	    }
+	    function handlePressOut() {
+	      clearInterval(intervalRef.current);
+	    }
+
+	    return (
+	      <TouchableOpacity
+	        onPressIn={handlePressIn}
+	        onPressOut={handlePressOut}
+	        style={styles.button}>
+	        <Text style={styles.buttonText}>{children}</Text>
+	      </TouchableOpacity>
+	    );
+	  }
             renderer.render(scene, camera);
             gl.endFrameEXP();
             requestAnimationFrame(animate);
@@ -222,13 +243,12 @@ export default function App() {
           animate();
         }}
       />
-      <View style={styles.controls}>
-        <Button title="←" onPress={() => move("left")} />
-        <Button title="↑" onPress={() => move("up")} />
-        <Button title="↓" onPress={() => move("down")} />
-        <Button title="→" onPress={() => move("right")} />
-      </View>
-    </View>
+	<View style={styles.controls}>
+	  <MoveButton direction="left" onMove={move}>←</MoveButton>
+	  <MoveButton direction="up" onMove={move}>↑</MoveButton>
+	  <MoveButton direction="down" onMove={move}>↓</MoveButton>
+	  <MoveButton direction="right" onMove={move}>→</MoveButton>
+	</View>
   );
 }
 
@@ -237,6 +257,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     margin: 12,
-    gap: 4
-  }
-});
+  },
+  button: {
+    backgroundColor: "#ddd",
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 52,
+  },
+  buttonText: { fontSize: 32, fontWeight: "bold" },
+}); // <-- ŠĪ IEKAVA NEDRĪKST PAZUST!
