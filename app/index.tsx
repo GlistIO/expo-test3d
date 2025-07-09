@@ -1,101 +1,21 @@
-import React, { useRef, useState } from "react";
-import { Text, TouchableOpacity, Image, View, Button, StyleSheet, Platform } from "react-native";
+import React, { useRef, useState, useEffect } from "react";
+import { View, StyleSheet } from "react-native";
 import { GLView } from "expo-gl";
-import { TextureLoader,  Renderer, loadTextureAsync } from "expo-three";
+import { TextureLoader, Renderer } from "expo-three";
 import * as THREE from "three";
 import * as FileSystem from "expo-file-system";
-
-const fileUri = FileSystem.cacheDirectory + "player2.png";
-FileSystem.downloadAsync("http://10.254.131.19:8000/player2.png", fileUri);
-
-FileSystem.getInfoAsync(fileUri).then(info => {
-  if (info.exists) {
-    console.log("Fails eksistē!", fileUri);
-  } else {
-    console.log("Fails NAV atrasts!", fileUri);
-  }
-});
-
-// ==== KONSTANTES ====
-const WORLD_LEFT = -2;
-const WORLD_RIGHT = 2;
-const WORLD_TOP = 2;
-const WORLD_BOTTOM = -2;
-
-const CUBE_SIZE = 0.35;
-const OBSTACLE_SIZE = 0.5;
-const STEP = 0.2;
-
-const MIN_X = WORLD_LEFT + CUBE_SIZE / 2;
-const MAX_X = WORLD_RIGHT - CUBE_SIZE / 2;
-const MIN_Y = WORLD_BOTTOM + CUBE_SIZE / 2;
-const MAX_Y = WORLD_TOP - CUBE_SIZE / 2;
-
-const OBSTACLE = { x: 0.5, y: 0, size: OBSTACLE_SIZE };
-
-const SPRITE_COLS = 4;
-const SPRITE_ROWS = 4;
-
-// Virzienu nosaukumi — izmanto "directionIndex"
-const DIRECTIONS = {
-  up: 3,     // atpakaļ
-  left: 1,
-  right: 2,
-  down: 0,   // uz priekšu
-};
-const COLORS = {
-  up: 0x0074d9,
-  down: 0xffdc00,
-  left: 0x2ecc40,
-  right: 0xff4136
-};
-
-function willCollide(newX, newY) {
-  const half = CUBE_SIZE / 2;
-  const oHalf = OBSTACLE.size / 2;
-  return (
-    Math.abs(newX - OBSTACLE.x) < half + oHalf &&
-    Math.abs(newY - OBSTACLE.y) < half + oHalf
-  );
-}
-
-function getSafeDestination(x, y, dx, dy) {
-  const TOTAL = STEP;
-  const SUBSTEP = 0.01;
-  let travelled = 0;
-  let lastSafe = { x, y };
-
-  while (travelled < TOTAL) {
-    let nx = x + dx * travelled;
-    let ny = y + dy * travelled;
-    if (nx < MIN_X || nx > MAX_X || ny < MIN_Y || ny > MAX_Y) break;
-    if (willCollide(nx, ny)) break;
-    lastSafe = { x: nx, y: ny };
-    travelled += SUBSTEP;
-  }
-  return lastSafe;
-}
-
-function MoveButton({ direction, onMove, children }) {
-  const intervalRef = useRef(null);
-
-  function handlePressIn() {
-    onMove(direction);
-    intervalRef.current = setInterval(() => onMove(direction), 100);
-  }
-  function handlePressOut() {
-    clearInterval(intervalRef.current);
-  }
-
-  return (
-    <TouchableOpacity
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={styles.button}>
-      <Text style={styles.buttonText}>{children}</Text>
-    </TouchableOpacity>
-  );
-}
+import { downloadAllImages } from "./imageAssets";
+import {
+  WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM,
+  SPRITE_COLS, SPRITE_ROWS,
+  WALK_FRAMES, WALK_FRAME_COUNT,
+  DIRECTIONS, OBSTACLE, CUBE_SIZE,
+} from "./constants";
+import { willCollide, getSafeDestination } from "./utils";
+import MoveButton from "./components/MoveButton";
+import CoinCounter from "./components/CoinCounter";
+import { isCoinCollected } from "./game/coins";
+import { initialCoins } from "./game/coinData";
 
 export default function App() {
   const meshRef = useRef(null);
@@ -104,7 +24,6 @@ export default function App() {
   const targetPos = useRef({ x: 0, y: 0 });
   const moveAnim = useRef(null);
   const [_, setRerender] = useState(0);
-  // Sprite stāvoklis
   const spriteState = useRef({
     direction: "down",
     frame: 0,
@@ -112,13 +31,26 @@ export default function App() {
   });
   const textureRef = useRef(null);
   const [queuedDirection, setQueuedDirection] = useState(null);
+  const [coinCount, setCoinCount] = useState(0);
+const [coin, setCoin] = useState({ x: -1, y: 1, taken: false }); // piemērs ar vienu monētu
+const coinRef = useRef(null);
+const [imageUris, setImageUris] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const uris = await downloadAllImages();
+      setImageUris(uris);
+    })();
+  }, []);
+
+  if (!imageUris) return null; // vai Loading...
+
 
   function move(direction) {
     if (moveAnim.current) {
       setQueuedDirection(direction);
       return;
     }
-
     setQueuedDirection(null);
     let { x, y } = targetPos.current;
     let dx = 0, dy = 0;
@@ -130,15 +62,11 @@ export default function App() {
     }
     const dest = getSafeDestination(x, y, dx, dy);
     if (dest.x === x && dest.y === y) return;
-
-    // Sprite: sāk no 0 frame, uzstāda virzienu
     spriteState.current.direction = direction;
     spriteState.current.frame = 0;
     spriteState.current.frameTick = 0;
-
     targetPos.current = dest;
     setRerender(v => v + 1);
-
     moveAnim.current = {
       from: { x, y },
       to: { x: dest.x, y: dest.y },
@@ -146,23 +74,23 @@ export default function App() {
     };
   }
 
-  // Sprite helpers
   function setSpriteFrame(dir, frame) {
     const tex = textureRef.current;
     if (!tex) return;
     const col = frame % SPRITE_COLS;
-    const row = DIRECTIONS[dir]; // 0=up, 1=left, 2=right, 3=down
+    const row = DIRECTIONS[dir];
     tex.repeat.set(1 / SPRITE_COLS, 1 / SPRITE_ROWS);
     tex.offset.x = col * (1 / SPRITE_COLS);
     tex.offset.y = 1 - (row + 1) * (1 / SPRITE_ROWS);
   }
+
   return (
     <View style={{ flex: 1 }}>
+    <CoinCounter count={coinCount} />
       <GLView
         style={{ flex: 1 }}
         onContextCreate={async (gl) => {
-
-	  const renderer = new Renderer({ gl });
+          const renderer = new Renderer({ gl });
           renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
 
           const scene = new THREE.Scene();
@@ -171,14 +99,28 @@ export default function App() {
           );
           camera.position.z = 2;
 
-          // === PLAYER SPRITE ===
-          // !! Ceļu uz savu PNG failu ieliec šeit:
-          const texture = await new TextureLoader().loadAsync({ uri: fileUri });
-	  texture.magFilter = THREE.NearestFilter;
-	  texture.repeat.set(1 / SPRITE_COLS, 1 / SPRITE_ROWS);
-	  texture.offset.set(0, 1 - 1 / SPRITE_ROWS);
-	  textureRef.current = texture;
-	  console.log("Texture loaded!", texture.image ? "OK" : "NO IMAGE", texture);
+          // PLAYER SPRITE
+          const texture = await new TextureLoader().loadAsync({ uri: imageUris.player });
+          texture.magFilter = THREE.NearestFilter;
+          texture.repeat.set(1 / SPRITE_COLS, 1 / SPRITE_ROWS);
+          texture.offset.set(0, 1 - 1 / SPRITE_ROWS);
+          textureRef.current = texture;
+      
+	  // PIEVIENO coin.png kā plane
+	const coinTexture = await new TextureLoader().loadAsync({ uri: imageUri.coin });
+	coinTexture.magFilter = THREE.NearestFilter;
+	const coinMaterial = new THREE.MeshBasicMaterial({
+	  map: coinTexture,
+	  transparent: true
+	});
+	const coinMesh = new THREE.Mesh(
+	  new THREE.PlaneGeometry(CUBE_SIZE * 1.1, CUBE_SIZE * 1.1),
+	  coinMaterial
+	);
+	coinMesh.position.set(coin.x, coin.y, 0);
+	scene.add(coinMesh);
+	coinRef.current = coinMesh;
+    
           const material = new THREE.MeshBasicMaterial({
             map: texture,
             transparent: true
@@ -191,40 +133,38 @@ export default function App() {
           scene.add(mesh);
           meshRef.current = mesh;
 
-          // Šķērslis
+          // OBSTACLE
           const obsGeometry = new THREE.PlaneGeometry(OBSTACLE.size, OBSTACLE.size);
           const obsMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
           const obstacle = new THREE.Mesh(obsGeometry, obsMaterial);
           obstacle.position.set(OBSTACLE.x, OBSTACLE.y, 0);
           scene.add(obstacle);
           obstacleRef.current = obstacle;
-         
+
           function animate() {
-            // === Sprite animācija ===
-	   const WALK_FRAMES = [0, 1, 0, 3];
-           const WALK_FRAME_COUNT = WALK_FRAMES.length;
-	   if(moveAnim.current) {
-	      const anim = moveAnim.current;
+            if (moveAnim.current) {
+              const anim = moveAnim.current;
               anim.progress += 0.04;
-		  spriteState.current.frameTick++;
-		  if (spriteState.current.frameTick % 6 === 0) {
-		    let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAME_COUNT;
-		    spriteState.current.frame = WALK_FRAMES[idx];
-		  }
-		  setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
-                if (moveAnim.current && anim.progress >= 1) {
-		    moveAnim.current = null;
-		    if (queuedDirection) {
-		      move(queuedDirection);
-		      setQueuedDirection(null);
-		    }
-		  }
-	        if (anim.progress >= 1) {
+              spriteState.current.frameTick++;
+              if (spriteState.current.frameTick % 6 === 0) {
+                let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAME_COUNT;
+                spriteState.current.frame = WALK_FRAMES[idx];
+              }
+              setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+
+              if (moveAnim.current && anim.progress >= 1) {
+                moveAnim.current = null;
+                if (queuedDirection) {
+                  move(queuedDirection);
+                  setQueuedDirection(null);
+                }
+              }
+
+              if (anim.progress >= 1) {
                 currentPos.current = { ...anim.to };
                 mesh.position.x = anim.to.x;
                 mesh.position.y = anim.to.y;
                 moveAnim.current = null;
-                // Pēc kustības - nostājas pirmajā frame
                 spriteState.current.frame = 0;
                 setSpriteFrame(spriteState.current.direction, 0);
               } else {
@@ -244,10 +184,20 @@ export default function App() {
                 }
               }
             } else {
-              // Nekustas? Parāda stāvošu kadru
-	      spriteState.current.frame = 0;
+              spriteState.current.frame = 0;
               setSpriteFrame(spriteState.current.direction, 0);
             }
+// Saskares pārbaude pēc pozīcijas izmaiņas!
+if (!coin.taken) {
+  const dx = currentPos.current.x - coin.x;
+  const dy = currentPos.current.y - coin.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < CUBE_SIZE * 0.7) { // vai cik cieši vēlies
+    setCoinCount(c => c + 1);
+    setCoin(c => ({ ...c, taken: true }));
+    if (coinRef.current) coinRef.current.visible = false; // paslēpjam coin
+  }
+}
             renderer.render(scene, camera);
             gl.endFrameEXP();
             requestAnimationFrame(animate);
@@ -255,13 +205,13 @@ export default function App() {
           animate();
         }}
       />
-	<View style={styles.controls}>
-	  <MoveButton direction="left" onMove={move}>←</MoveButton>
-	  <MoveButton direction="up" onMove={move}>↑</MoveButton>
-	  <MoveButton direction="down" onMove={move}>↓</MoveButton>
-	  <MoveButton direction="right" onMove={move}>→</MoveButton>
-	</View>
+      <View style={styles.controls}>
+        <MoveButton direction="left" onMove={move}>←</MoveButton>
+        <MoveButton direction="up" onMove={move}>↑</MoveButton>
+        <MoveButton direction="down" onMove={move}>↓</MoveButton>
+        <MoveButton direction="right" onMove={move}>→</MoveButton>
       </View>
+    </View>
   );
 }
 
@@ -270,18 +220,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     margin: 12,
-  },
-  button: {
-    backgroundColor: "#ddd",
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 52,
-  },
-  buttonText: {
-    fontSize: 32,
-    fontWeight: "bold",
   },
 });
