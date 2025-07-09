@@ -76,6 +76,27 @@ function getSafeDestination(x, y, dx, dy) {
   return lastSafe;
 }
 
+function MoveButton({ direction, onMove, children }) {
+  const intervalRef = useRef(null);
+
+  function handlePressIn() {
+    onMove(direction);
+    intervalRef.current = setInterval(() => onMove(direction), 100);
+  }
+  function handlePressOut() {
+    clearInterval(intervalRef.current);
+  }
+
+  return (
+    <TouchableOpacity
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={styles.button}>
+      <Text style={styles.buttonText}>{children}</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function App() {
   const meshRef = useRef(null);
   const obstacleRef = useRef(null);
@@ -90,10 +111,15 @@ export default function App() {
     frameTick: 0
   });
   const textureRef = useRef(null);
+  const [queuedDirection, setQueuedDirection] = useState(null);
 
   function move(direction) {
-    if (moveAnim.current) return;
+    if (moveAnim.current) {
+      setQueuedDirection(direction);
+      return;
+    }
 
+    setQueuedDirection(null);
     let { x, y } = targetPos.current;
     let dx = 0, dy = 0;
     switch (direction) {
@@ -130,13 +156,11 @@ export default function App() {
     tex.offset.x = col * (1 / SPRITE_COLS);
     tex.offset.y = 1 - (row + 1) * (1 / SPRITE_ROWS);
   }
-  console.log('Rendering...');
   return (
     <View style={{ flex: 1 }}>
       <GLView
         style={{ flex: 1 }}
         onContextCreate={async (gl) => {
-          console.log('GLView onContextCreate triggered!');
 
 	  const renderer = new Renderer({ gl });
           renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -174,20 +198,28 @@ export default function App() {
           obstacle.position.set(OBSTACLE.x, OBSTACLE.y, 0);
           scene.add(obstacle);
           obstacleRef.current = obstacle;
-
+         
           function animate() {
             // === Sprite animācija ===
-            if (moveAnim.current) {
-              const anim = moveAnim.current;
-              anim.progress += 0.08;
-              // Kustības laikā: mainām sprite kadru ik pa brīdim
-              spriteState.current.frameTick++;
-              if (spriteState.current.frameTick % 6 === 0) { // frame speed
-                spriteState.current.frame = (spriteState.current.frame + 1) % SPRITE_COLS;
-              }
-              setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
-
-              if (anim.progress >= 1) {
+	   const WALK_FRAMES = [0, 1, 0, 3];
+           const WALK_FRAME_COUNT = WALK_FRAMES.length;
+	   if(moveAnim.current) {
+	      const anim = moveAnim.current;
+              anim.progress += 0.04;
+		  spriteState.current.frameTick++;
+		  if (spriteState.current.frameTick % 6 === 0) {
+		    let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAME_COUNT;
+		    spriteState.current.frame = WALK_FRAMES[idx];
+		  }
+		  setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+                if (moveAnim.current && anim.progress >= 1) {
+		    moveAnim.current = null;
+		    if (queuedDirection) {
+		      move(queuedDirection);
+		      setQueuedDirection(null);
+		    }
+		  }
+	        if (anim.progress >= 1) {
                 currentPos.current = { ...anim.to };
                 mesh.position.x = anim.to.x;
                 mesh.position.y = anim.to.y;
@@ -213,29 +245,9 @@ export default function App() {
               }
             } else {
               // Nekustas? Parāda stāvošu kadru
+	      spriteState.current.frame = 0;
               setSpriteFrame(spriteState.current.direction, 0);
             }
-	    
-	    function MoveButton({ direction, onMove, children }) {
-	    const intervalRef = useRef(null);
-
-	    function handlePressIn() {
-	      onMove(direction); // uzreiz pirmais solis
-	      intervalRef.current = setInterval(() => onMove(direction), 100); // ik 100ms atkārto
-	    }
-	    function handlePressOut() {
-	      clearInterval(intervalRef.current);
-	    }
-
-	    return (
-	      <TouchableOpacity
-	        onPressIn={handlePressIn}
-	        onPressOut={handlePressOut}
-	        style={styles.button}>
-	        <Text style={styles.buttonText}>{children}</Text>
-	      </TouchableOpacity>
-	    );
-	  }
             renderer.render(scene, camera);
             gl.endFrameEXP();
             requestAnimationFrame(animate);
@@ -249,6 +261,7 @@ export default function App() {
 	  <MoveButton direction="down" onMove={move}>↓</MoveButton>
 	  <MoveButton direction="right" onMove={move}>→</MoveButton>
 	</View>
+      </View>
   );
 }
 
@@ -267,5 +280,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minWidth: 52,
   },
-  buttonText: { fontSize: 32, fontWeight: "bold" },
-}); // <-- ŠĪ IEKAVA NEDRĪKST PAZUST!
+  buttonText: {
+    fontSize: 32,
+    fontWeight: "bold",
+  },
+});
