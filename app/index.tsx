@@ -16,6 +16,7 @@ import MoveButton from "./components/MoveButton";
 import CoinCounter from "./components/CoinCounter";
 import { isCoinCollected } from "./game/coins";
 import { initialCoins } from "./game/coinData";
+import GameDialog from "./components/GameDialog";
 
 export default function App() {
   const meshRef = useRef(null);
@@ -32,9 +33,10 @@ export default function App() {
   const textureRef = useRef(null);
   const [queuedDirection, setQueuedDirection] = useState(null);
   const [coinCount, setCoinCount] = useState(0);
-const [coin, setCoin] = useState({ x: -1, y: 1, taken: false }); // piemērs ar vienu monētu
-const coinRef = useRef(null);
-const [imageUris, setImageUris] = useState(null);
+  const coin = useRef({ x: -1, y: 1, taken: false });
+  const coinRef = useRef(null);
+  const [imageUris, setImageUris] = useState(null);
+  const [dialog, setDialog] = useState({ visible: false, text: "" });
 
   useEffect(() => {
     (async () => {
@@ -44,7 +46,10 @@ const [imageUris, setImageUris] = useState(null);
   }, []);
 
   if (!imageUris) return null; // vai Loading...
-
+ 
+  function showDialog(text, icon = null, timeout = 2000, background = null) {
+    setDialog({ visible: true, text, icon, timeout, background });
+  }
 
   function move(direction) {
     if (moveAnim.current) {
@@ -98,7 +103,7 @@ const [imageUris, setImageUris] = useState(null);
             WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM, 0.1, 10
           );
           camera.position.z = 2;
-
+	  showDialog("Tu atradi 1 zelta monētu! Apsveicam, tu tagad esi bagātāks par 1 monētu.", null, 10000);
           // PLAYER SPRITE
           const texture = await new TextureLoader().loadAsync({ uri: imageUris.player });
           texture.magFilter = THREE.NearestFilter;
@@ -107,17 +112,18 @@ const [imageUris, setImageUris] = useState(null);
           textureRef.current = texture;
       
 	  // PIEVIENO coin.png kā plane
-	const coinTexture = await new TextureLoader().loadAsync({ uri: imageUri.coin });
+	const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
 	coinTexture.magFilter = THREE.NearestFilter;
 	const coinMaterial = new THREE.MeshBasicMaterial({
 	  map: coinTexture,
 	  transparent: true
 	});
 	const coinMesh = new THREE.Mesh(
-	  new THREE.PlaneGeometry(CUBE_SIZE * 1.1, CUBE_SIZE * 1.1),
+	  new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
 	  coinMaterial
 	);
-	coinMesh.position.set(coin.x, coin.y, 0);
+	coinMesh.position.set(coin.current.x, coin.current.y, 0);
+	coinMesh.visible = true;
 	scene.add(coinMesh);
 	coinRef.current = coinMesh;
     
@@ -187,15 +193,14 @@ const [imageUris, setImageUris] = useState(null);
               spriteState.current.frame = 0;
               setSpriteFrame(spriteState.current.direction, 0);
             }
-// Saskares pārbaude pēc pozīcijas izmaiņas!
-if (!coin.taken) {
-  const dx = currentPos.current.x - coin.x;
-  const dy = currentPos.current.y - coin.y;
+if (!coin.current.taken) {
+  const dx = currentPos.current.x - coin.current.x;
+  const dy = currentPos.current.y - coin.current.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < CUBE_SIZE * 0.7) { // vai cik cieši vēlies
+  if (dist < CUBE_SIZE * 0.7) {
     setCoinCount(c => c + 1);
-    setCoin(c => ({ ...c, taken: true }));
-    if (coinRef.current) coinRef.current.visible = false; // paslēpjam coin
+    coin.current.taken = true;
+    if (coinRef.current) coinRef.current.visible = false;
   }
 }
             renderer.render(scene, camera);
@@ -205,6 +210,13 @@ if (!coin.taken) {
           animate();
         }}
       />
+      <GameDialog
+	  visible={dialog.visible}
+	  text={dialog.text}
+	  icon={dialog.icon} // bilde (piem. coin.png) ja vajag
+	  timeout={dialog.timeout || 2200}
+	  onHide={() => setDialog({ ...dialog, visible: false })}
+	/>
       <View style={styles.controls}>
         <MoveButton direction="left" onMove={move}>←</MoveButton>
         <MoveButton direction="up" onMove={move}>↑</MoveButton>
