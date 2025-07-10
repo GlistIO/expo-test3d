@@ -26,17 +26,25 @@ export default function App() {
 
   // == SCENE STUFF ==
   const [sceneIndex, setSceneIndex] = useState(0);
-  const currentScene = scenes[sceneIndex];
-  const playerPos = useRef({ ...currentScene.playerStart });
-  const [coins, setCoins] = useState(currentScene.coins.map(c => ({ ...c, taken: false })));
+  const playerPos = useRef(scenes[sceneIndex]?.playerStart ? { ...scenes[sceneIndex].playerStart } : { x: 0, y: 0 });
+  const currentScene = scenes[sceneIndex] || scenes[0] || {};
+  const [coins, setCoins] = useState(
+    (currentScene.coins || []).map(c => ({ ...c, taken: false }))
+  );
 
   // Reset on scene change
+  
   useEffect(() => {
+  if (scenes[sceneIndex]?.playerStart) {
     playerPos.current = { ...scenes[sceneIndex].playerStart };
-    setCoins(scenes[sceneIndex].coins.map(c => ({ ...c, taken: false })));
-    if (coinRefs.current.length > 0) coinRefs.current = [];
-    targetDestination.current = null;
-  }, [sceneIndex]);
+  } else {
+    playerPos.current = { x: 0, y: 0 };
+    console.warn("Nav playerStart priekš scēnas!", sceneIndex);
+  }
+  setCoins(scenes[sceneIndex]?.coins?.map(c => ({ ...c, taken: false })) || []);
+  if (coinRefs.current.length > 0) coinRefs.current = [];
+  targetDestination.current = null;
+}, [sceneIndex]);
 
   useEffect(() => {
     (async () => {
@@ -46,6 +54,10 @@ export default function App() {
   }, []);
 
   if (!imageUris) return null;
+
+console.log('sceneIndex:', sceneIndex);
+console.log('scenes:', scenes);
+console.log('currentScene:', scenes[sceneIndex]);
 
   function showDialog(text, icon = null, timeout = 2000, background = null) {
     setDialog({ visible: true, text, icon, timeout, background });
@@ -71,9 +83,7 @@ export default function App() {
   // Pāreja uz citu scēnu
   function goToScene(newSceneIdx, entry = "left", y = 0) {
     setSceneIndex(newSceneIdx);
-console.log(
-    `[DEBUG] Pārejam uz scēnu ${newSceneIdx} (ieeja: ${entry}, y: ${y})`
-  );
+
     let newX;
     if (entry === "left") {
       newX = WORLD_RIGHT - 0.3;
@@ -83,21 +93,22 @@ console.log(
       newX = scenes[newSceneIdx].playerStart.x;
     }
     playerPos.current = { x: newX, y };
-console.log("[DEBUG] Jaunā pozīcija:", playerPos.current);
+
     targetDestination.current = null; // Lai cilvēciņš neiet uzreiz atpakaļ!
   }
 
   function checkForSceneChange(pos) {
-    const exit = currentScene.exits.left;
-  if (exit && pos.x <= WORLD_LEFT + EXIT_MARGIN) {
-    if (!exit.yRange || (pos.y >= exit.yRange[0] && pos.y <= exit.yRange[1])) {
-      goToScene(exit.scene, "left", pos.y);
+    const leftExit = currentScene.exits.left;
+  if (leftExit && pos.x <= WORLD_LEFT + EXIT_MARGIN) {
+    if (!leftExit.yRange || (pos.y >= leftExit.yRange[0] && pos.y <= leftExit.yRange[1])) {
+      goToScene(leftExit.scene, "left", pos.y);
       return true;
     }
   }
-  if (exit && pos.x <= WORLD_RIGHT + EXIT_MARGIN) {
-    if (!exit.yRange || (pos.y >= exit.yRange[0] && pos.y <= exit.yRange[1])) {
-      goToScene(exit.scene, "right", pos.y);
+  const rightExit = currentScene.exits.right;
+  if (rightExit && pos.x <= WORLD_RIGHT + EXIT_MARGIN) {
+    if (!rightExit.yRange || (pos.y >= rightExit.yRange[0] && pos.y <= rightExit.yRange[1])) {
+      goToScene(rightExit.scene, "right", pos.y);
       return true;
     }
   }
@@ -181,12 +192,12 @@ console.log("[DEBUG] Jaunā pozīcija:", playerPos.current);
   // 1. Pārbaudi — vai nav jāmaina scene!
 
   if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN  && currentScene.exits.left !== null) {
-    goToScene(currentScene.exits.left, "left", playerPos.current.y);
+    goToScene(currentScene.exits.left.scene, "left", playerPos.current.y);
     console.log("[DEBUG] Kreisa mala sasniegta! Mainām scenu.");
     return; // animācija šim ciklam stop — viss renderosies nākamajā
   }
   if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits.right !== null) {
-    goToScene(currentScene.exits.right, "right", playerPos.current.y);
+    goToScene(currentScene.exits.right.scene, "right", playerPos.current.y);
     return;
   }
   // (Atkārto ar TOP/BOTTOM, ja vajag)
