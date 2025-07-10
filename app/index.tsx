@@ -3,7 +3,6 @@ import { View, StyleSheet, Pressable, Dimensions } from "react-native";
 import { GLView } from "expo-gl";
 import { TextureLoader, Renderer } from "expo-three";
 import * as THREE from "three";
-import * as FileSystem from "expo-file-system";
 import { downloadAllImages } from "./imageAssets";
 import {
   WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM,
@@ -11,33 +10,27 @@ import {
   WALK_FRAMES, WALK_FRAME_COUNT,
   DIRECTIONS, OBSTACLE, CUBE_SIZE,
 } from "./constants";
-import { willCollide, getSafeDestination } from "./utils";
-import MoveButton from "./components/MoveButton";
+import { willCollide } from "./utils";
 import CoinCounter from "./components/CoinCounter";
-import { isCoinCollected } from "./game/coins";
-import { initialCoins } from "./game/coinData";
 import GameDialog from "./components/GameDialog";
 
 export default function App() {
   const meshRef = useRef(null);
-  const obstacleRef = useRef(null);
   const currentPos = useRef({ x: 0, y: 0 });
-  const targetPos = useRef({ x: 0, y: 0 });
-  const moveAnim = useRef(null);
-  const [_, setRerender] = useState(0);
   const spriteState = useRef({
     direction: "down",
     frame: 0,
-    frameTick: 0
+    frameTick: 0,
   });
   const textureRef = useRef(null);
-  const [queuedDirection, setQueuedDirection] = useState(null);
   const [coinCount, setCoinCount] = useState(0);
   const coin = useRef({ x: -1, y: 1, taken: false });
   const coinRef = useRef(null);
   const [imageUris, setImageUris] = useState(null);
   const [dialog, setDialog] = useState({ visible: false, text: "" });
   const glViewRef = useRef(null);
+
+  // Jaunais: tap-to-go
   const targetDestination = useRef(null);
 
   useEffect(() => {
@@ -47,40 +40,13 @@ export default function App() {
     })();
   }, []);
 
-  if (!imageUris) return null; // vai Loading...
- 
+  if (!imageUris) return null;
+
   function showDialog(text, icon = null, timeout = 2000, background = null) {
     setDialog({ visible: true, text, icon, timeout, background });
   }
 
-  function move(direction) {
-    if (moveAnim.current) {
-      setQueuedDirection(direction);
-      return;
-    }
-    setQueuedDirection(null);
-    let { x, y } = targetPos.current;
-    let dx = 0, dy = 0;
-    switch (direction) {
-      case "up":    dy = 1; break;
-      case "down":  dy = -1; break;
-      case "left":  dx = -1; break;
-      case "right": dx = 1; break;
-    }
-    const dest = getSafeDestination(x, y, dx, dy);
-    if (dest.x === x && dest.y === y) return;
-    spriteState.current.direction = direction;
-    spriteState.current.frame = 0;
-    spriteState.current.frameTick = 0;
-    targetPos.current = dest;
-    setRerender(v => v + 1);
-    moveAnim.current = {
-      from: { x, y },
-      to: { x: dest.x, y: dest.y },
-      progress: 0
-    };
-  }
-
+  // Sprite helpers
   function setSpriteFrame(dir, frame) {
     const tex = textureRef.current;
     if (!tex) return;
@@ -91,161 +57,162 @@ export default function App() {
     tex.offset.y = 1 - (row + 1) * (1 / SPRITE_ROWS);
   }
 
-function handleTap(locationX, locationY) {
+  // TAP — saglabā galamērķi, uz kurieni jākustas!
+  function handleTap(locationX, locationY) {
     const { width, height } = Dimensions.get("window");
     const worldX = WORLD_LEFT + (locationX / width) * (WORLD_RIGHT - WORLD_LEFT);
     const worldY = WORLD_TOP - (locationY / height) * (WORLD_TOP - WORLD_BOTTOM);
-
     targetDestination.current = { x: worldX, y: worldY };
   }
 
   return (
     <View style={{ flex: 1 }}>
-    <CoinCounter count={coinCount} />
-    <View style={{ flex: 1 }}>
-    <Pressable
+      <CoinCounter count={coinCount} />
+      <View style={{ flex: 1 }}>
+        {/* Overlay: Pressable pa visu laukumu */}
+        <Pressable
           style={StyleSheet.absoluteFill}
-  onPress={(e) => {
-    const { locationX, locationY } = e.nativeEvent;
-    handleTap(locationX, locationY);
-  }}
-        >  
-    <GLView
-        ref={glViewRef}
-        style={{ flex: 1 }}
-        onContextCreate={async (gl) => {
-          const renderer = new Renderer({ gl });
-          renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
+          onPress={e => {
+            const { locationX, locationY } = e.nativeEvent;
+            handleTap(locationX, locationY);
+          }}
+        >
+          <GLView
+            ref={glViewRef}
+            style={{ flex: 1 }}
+            onContextCreate={async (gl) => {
+              const renderer = new Renderer({ gl });
+              renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
 
-          const scene = new THREE.Scene();
-          const camera = new THREE.OrthographicCamera(
-            WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM, 0.1, 10
-          );
-          camera.position.z = 2;
-	  showDialog("Tu atradi 1 zelta monētu! Apsveicam, tu tagad esi bagātāks par 1 monētu.", null, 10000);
-          // PLAYER SPRITE
-          const texture = await new TextureLoader().loadAsync({ uri: imageUris.player });
-          texture.magFilter = THREE.NearestFilter;
-          texture.repeat.set(1 / SPRITE_COLS, 1 / SPRITE_ROWS);
-          texture.offset.set(0, 1 - 1 / SPRITE_ROWS);
-          textureRef.current = texture;
-      
-	  // PIEVIENO coin.png kā plane
-	const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
-	coinTexture.magFilter = THREE.NearestFilter;
-	const coinMaterial = new THREE.MeshBasicMaterial({
-	  map: coinTexture,
-	  transparent: true
-	});
-	const coinMesh = new THREE.Mesh(
-	  new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
-	  coinMaterial
-	);
-	coinMesh.position.set(coin.current.x, coin.current.y, 0);
-	coinMesh.visible = true;
-	scene.add(coinMesh);
-	coinRef.current = coinMesh;
-    
-          const material = new THREE.MeshBasicMaterial({
-            map: texture,
-            transparent: true
-          });
-          const mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE),
-            material
-          );
-          mesh.position.set(currentPos.current.x, currentPos.current.y, 0);
-          scene.add(mesh);
-          meshRef.current = mesh;
+              const scene = new THREE.Scene();
+              const camera = new THREE.OrthographicCamera(
+                WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM, 0.1, 10
+              );
+              camera.position.z = 2;
 
-          // OBSTACLE
-          const obsGeometry = new THREE.PlaneGeometry(OBSTACLE.size, OBSTACLE.size);
-          const obsMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
-          const obstacle = new THREE.Mesh(obsGeometry, obsMaterial);
-          obstacle.position.set(OBSTACLE.x, OBSTACLE.y, 0);
-          scene.add(obstacle);
-          obstacleRef.current = obstacle;
+              // PLAYER SPRITE
+              const texture = await new TextureLoader().loadAsync({ uri: imageUris.player });
+              texture.magFilter = THREE.NearestFilter;
+              texture.repeat.set(1 / SPRITE_COLS, 1 / SPRITE_ROWS);
+              texture.offset.set(0, 1 - 1 / SPRITE_ROWS);
+              textureRef.current = texture;
 
-          function animate() {
-            if (moveAnim.current) {
-              const anim = moveAnim.current;
-              anim.progress += 0.04;
-              spriteState.current.frameTick++;
-              if (spriteState.current.frameTick % 6 === 0) {
-                let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAME_COUNT;
-                spriteState.current.frame = WALK_FRAMES[idx];
-              }
-              setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+              // COIN
+              const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
+              coinTexture.magFilter = THREE.NearestFilter;
+              const coinMaterial = new THREE.MeshBasicMaterial({
+                map: coinTexture,
+                transparent: true,
+              });
+              const coinMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
+                coinMaterial
+              );
+              coinMesh.position.set(coin.current.x, coin.current.y, 0);
+              coinMesh.visible = true;
+              scene.add(coinMesh);
+              coinRef.current = coinMesh;
 
-              if (moveAnim.current && anim.progress >= 1) {
-                moveAnim.current = null;
-                if (queuedDirection) {
-                  move(queuedDirection);
-                  setQueuedDirection(null);
-                }
-              }
+              // PLAYER MESH
+              const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+              });
+              const mesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE),
+                material
+              );
+              mesh.position.set(currentPos.current.x, currentPos.current.y, 0);
+              scene.add(mesh);
+              meshRef.current = mesh;
 
-              if (anim.progress >= 1) {
-                currentPos.current = { ...anim.to };
-                mesh.position.x = anim.to.x;
-                mesh.position.y = anim.to.y;
-                moveAnim.current = null;
-                spriteState.current.frame = 0;
-                setSpriteFrame(spriteState.current.direction, 0);
-              } else {
-                let nx = anim.from.x + (anim.to.x - anim.from.x) * anim.progress;
-                let ny = anim.from.y + (anim.to.y - anim.from.y) * anim.progress;
-                if (willCollide(nx, ny)) {
-                  currentPos.current = { ...anim.from };
-                  mesh.position.x = anim.from.x;
-                  mesh.position.y = anim.from.y;
-                  moveAnim.current = null;
+              // OBSTACLE
+              const obsGeometry = new THREE.PlaneGeometry(OBSTACLE.size, OBSTACLE.size);
+              const obsMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
+              const obstacle = new THREE.Mesh(obsGeometry, obsMaterial);
+              obstacle.position.set(OBSTACLE.x, OBSTACLE.y, 0);
+              scene.add(obstacle);
+
+              // === ANIMATE ===
+              function animate() {
+                // TAP-TO-GO movement!
+                if (targetDestination.current) {
+                  const dx = targetDestination.current.x - currentPos.current.x;
+                  const dy = targetDestination.current.y - currentPos.current.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+
+                  if (dist > 0.01) {
+                    const STEP = 0.01; // kustības ātrums
+                    const step = Math.min(STEP, dist);
+                    const nx = currentPos.current.x + (dx / dist) * step;
+                    const ny = currentPos.current.y + (dy / dist) * step;
+                    if (!willCollide(nx, ny)) {
+                      mesh.position.set(nx, ny, 0);
+                      currentPos.current = { x: nx, y: ny };
+
+                      // Sprite virziens
+                      let dir;
+                      if (Math.abs(dx) > Math.abs(dy)) {
+                        dir = dx > 0 ? "right" : "left";
+                      } else {
+                        dir = dy > 0 ? "up" : "down";
+                      }
+                      spriteState.current.direction = dir;
+
+                      // Sprite frame animācija
+                      spriteState.current.frameTick++;
+                      if (spriteState.current.frameTick % 6 === 0) {
+                        let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
+                        spriteState.current.frame = WALK_FRAMES[idx];
+                      }
+                      setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+                    } else {
+                      targetDestination.current = null; // Ja ir šķērslis, apstājas!
+                    }
+                  } else {
+                    targetDestination.current = null; // Sasniegts galamērķis
+                    spriteState.current.frame = 0;
+                    setSpriteFrame(spriteState.current.direction, 0);
+                  }
+                } else {
+                  // Idle frame, ja nestāv
                   spriteState.current.frame = 0;
                   setSpriteFrame(spriteState.current.direction, 0);
-                } else {
-                  mesh.position.x = nx;
-                  mesh.position.y = ny;
-                  currentPos.current = { x: nx, y: ny };
                 }
+
+                // COIN pickup
+                if (!coin.current.taken) {
+                  const dx = currentPos.current.x - coin.current.x;
+                  const dy = currentPos.current.y - coin.current.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  if (dist < CUBE_SIZE * 0.7) {
+                    setCoinCount(c => c + 1);
+                    coin.current.taken = true;
+                    if (coinRef.current) coinRef.current.visible = false;
+                    showDialog("Tu atradi 1 zelta monētu!", imageUris.coin, 2400);
+                  }
+                }
+
+                renderer.render(scene, camera);
+                gl.endFrameEXP();
+                requestAnimationFrame(animate);
               }
-            } else {
-              spriteState.current.frame = 0;
-              setSpriteFrame(spriteState.current.direction, 0);
-            }
-		if (!coin.current.taken) {
-		  const dx = currentPos.current.x - coin.current.x;
-		  const dy = currentPos.current.y - coin.current.y;
-		  const dist = Math.sqrt(dx * dx + dy * dy);
-		  if (dist < CUBE_SIZE * 0.7) {
-		    setCoinCount(c => c + 1);
-		    coin.current.taken = true;
-		    if (coinRef.current) coinRef.current.visible = false;
-		  }
-		}
-            renderer.render(scene, camera);
-            gl.endFrameEXP();
-            requestAnimationFrame(animate);
-          }
-          animate();
-        }}
-      />
-     </Pressable>
-     </View>
+              animate();
+            }}
+          />
+        </Pressable>
+      </View>
       <GameDialog
-	  visible={dialog.visible}
-	  text={dialog.text}
-	  icon={dialog.icon} // bilde (piem. coin.png) ja vajag
-	  timeout={dialog.timeout || 2200}
-	  onHide={() => setDialog({ ...dialog, visible: false })}
-	/>
+        visible={dialog.visible}
+        text={dialog.text}
+        icon={dialog.icon}
+        timeout={dialog.timeout || 2200}
+        onHide={() => setDialog({ ...dialog, visible: false })}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  controls: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    margin: 12,
-  },
+  // Ja vēlāk vajag overlay/citus style
 });
