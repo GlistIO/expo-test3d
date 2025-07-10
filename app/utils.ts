@@ -1,12 +1,16 @@
 import { CUBE_SIZE, OBSTACLE, MIN_X, MAX_X, MIN_Y, MAX_Y, STEP } from "./constants";
 
-export function willCollide(newX, newY) {
-  const half = CUBE_SIZE / 2;
-  const oHalf = OBSTACLE.size / 2;
-  return (
-    Math.abs(newX - OBSTACLE.x) < half + oHalf &&
-    Math.abs(newY - OBSTACLE.y) < half + oHalf
-  );
+export function willCollide(x, y, obstacles) {
+  for (let obj of obstacles) {
+    const half = obj.size / 2;
+    if (
+      Math.abs(x - obj.x) < CUBE_SIZE / 2 + half &&
+      Math.abs(y - obj.y) < CUBE_SIZE / 2 + half
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getSafeDestination(x, y, dx, dy) {

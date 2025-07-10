@@ -7,31 +7,36 @@ import { downloadAllImages } from "./imageAssets";
 import {
   WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM,
   SPRITE_COLS, SPRITE_ROWS,
-  WALK_FRAMES, WALK_FRAME_COUNT,
-  DIRECTIONS, OBSTACLE, CUBE_SIZE,
+  WALK_FRAMES, DIRECTIONS, CUBE_SIZE, EXIT_MARGIN
 } from "./constants";
 import { willCollide } from "./utils";
 import CoinCounter from "./components/CoinCounter";
 import GameDialog from "./components/GameDialog";
+import scenes from "./scenes";
 
 export default function App() {
   const meshRef = useRef(null);
-  const currentPos = useRef({ x: 0, y: 0 });
-  const spriteState = useRef({
-    direction: "down",
-    frame: 0,
-    frameTick: 0,
-  });
+  const spriteState = useRef({ direction: "down", frame: 0, frameTick: 0 });
   const textureRef = useRef(null);
+  const coinRefs = useRef([]);
   const [coinCount, setCoinCount] = useState(0);
-  const coin = useRef({ x: -1, y: 1, taken: false });
-  const coinRef = useRef(null);
   const [imageUris, setImageUris] = useState(null);
   const [dialog, setDialog] = useState({ visible: false, text: "" });
-  const glViewRef = useRef(null);
-
-  // Jaunais: tap-to-go
   const targetDestination = useRef(null);
+
+  // == SCENE STUFF ==
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const currentScene = scenes[sceneIndex];
+  const playerPos = useRef({ ...currentScene.playerStart });
+  const [coins, setCoins] = useState(currentScene.coins.map(c => ({ ...c, taken: false })));
+
+  // Reset on scene change
+  useEffect(() => {
+    playerPos.current = { ...scenes[sceneIndex].playerStart };
+    setCoins(scenes[sceneIndex].coins.map(c => ({ ...c, taken: false })));
+    if (coinRefs.current.length > 0) coinRefs.current = [];
+    targetDestination.current = null;
+  }, [sceneIndex]);
 
   useEffect(() => {
     (async () => {
@@ -46,7 +51,6 @@ export default function App() {
     setDialog({ visible: true, text, icon, timeout, background });
   }
 
-  // Sprite helpers
   function setSpriteFrame(dir, frame) {
     const tex = textureRef.current;
     if (!tex) return;
@@ -57,7 +61,6 @@ export default function App() {
     tex.offset.y = 1 - (row + 1) * (1 / SPRITE_ROWS);
   }
 
-  // TAP — saglabā galamērķi, uz kurieni jākustas!
   function handleTap(locationX, locationY) {
     const { width, height } = Dimensions.get("window");
     const worldX = WORLD_LEFT + (locationX / width) * (WORLD_RIGHT - WORLD_LEFT);
@@ -65,11 +68,46 @@ export default function App() {
     targetDestination.current = { x: worldX, y: worldY };
   }
 
+  // Pāreja uz citu scēnu
+  function goToScene(newSceneIdx, entry = "left", y = 0) {
+    setSceneIndex(newSceneIdx);
+console.log(
+    `[DEBUG] Pārejam uz scēnu ${newSceneIdx} (ieeja: ${entry}, y: ${y})`
+  );
+    let newX;
+    if (entry === "left") {
+      newX = WORLD_RIGHT - 0.3;
+    } else if (entry === "right") {
+      newX = WORLD_LEFT + 0.3;
+    } else {
+      newX = scenes[newSceneIdx].playerStart.x;
+    }
+    playerPos.current = { x: newX, y };
+console.log("[DEBUG] Jaunā pozīcija:", playerPos.current);
+    targetDestination.current = null; // Lai cilvēciņš neiet uzreiz atpakaļ!
+  }
+
+  function checkForSceneChange(pos) {
+    const exit = currentScene.exits.left;
+  if (exit && pos.x <= WORLD_LEFT + EXIT_MARGIN) {
+    if (!exit.yRange || (pos.y >= exit.yRange[0] && pos.y <= exit.yRange[1])) {
+      goToScene(exit.scene, "left", pos.y);
+      return true;
+    }
+  }
+  if (exit && pos.x <= WORLD_RIGHT + EXIT_MARGIN) {
+    if (!exit.yRange || (pos.y >= exit.yRange[0] && pos.y <= exit.yRange[1])) {
+      goToScene(exit.scene, "right", pos.y);
+      return true;
+    }
+  }
+    return false;
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <CoinCounter count={coinCount} />
       <View style={{ flex: 1 }}>
-        {/* Overlay: Pressable pa visu laukumu */}
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={e => {
@@ -78,8 +116,8 @@ export default function App() {
           }}
         >
           <GLView
-            ref={glViewRef}
             style={{ flex: 1 }}
+            key={sceneIndex}
             onContextCreate={async (gl) => {
               const renderer = new Renderer({ gl });
               renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -97,21 +135,34 @@ export default function App() {
               texture.offset.set(0, 1 - 1 / SPRITE_ROWS);
               textureRef.current = texture;
 
-              // COIN
-              const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
-              coinTexture.magFilter = THREE.NearestFilter;
-              const coinMaterial = new THREE.MeshBasicMaterial({
-                map: coinTexture,
-                transparent: true,
+              // Obstacles from scene
+              currentScene.obstacles.forEach(obj => {
+                const geo = new THREE.PlaneGeometry(obj.size, obj.size);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+                const obs = new THREE.Mesh(geo, mat);
+                obs.position.set(obj.x, obj.y, 0);
+                scene.add(obs);
               });
-              const coinMesh = new THREE.Mesh(
-                new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
-                coinMaterial
-              );
-              coinMesh.position.set(coin.current.x, coin.current.y, 0);
-              coinMesh.visible = true;
-              scene.add(coinMesh);
-              coinRef.current = coinMesh;
+
+              // Ielādē vienu coinTexture ārpus forEach!
+		const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
+		coinTexture.magFilter = THREE.NearestFilter;
+
+		coins.forEach((c, i) => {
+		  if (c.taken) return;
+		  const coinMaterial = new THREE.MeshBasicMaterial({
+		    map: coinTexture,
+		    transparent: true,
+		  });
+		  const coinMesh = new THREE.Mesh(
+		    new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
+		    coinMaterial
+		  );
+		  coinMesh.position.set(c.x, c.y, 0);
+		  coinMesh.visible = true;
+		  scene.add(coinMesh);
+		  coinRefs.current[i] = coinMesh;
+		});
 
               // PLAYER MESH
               const material = new THREE.MeshBasicMaterial({
@@ -122,81 +173,77 @@ export default function App() {
                 new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE),
                 material
               );
-              mesh.position.set(currentPos.current.x, currentPos.current.y, 0);
+              mesh.position.set(playerPos.current.x, playerPos.current.y, 0);
               scene.add(mesh);
               meshRef.current = mesh;
 
-              // OBSTACLE
-              const obsGeometry = new THREE.PlaneGeometry(OBSTACLE.size, OBSTACLE.size);
-              const obsMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
-              const obstacle = new THREE.Mesh(obsGeometry, obsMaterial);
-              obstacle.position.set(OBSTACLE.x, OBSTACLE.y, 0);
-              scene.add(obstacle);
-
-              // === ANIMATE ===
               function animate() {
-                // TAP-TO-GO movement!
-                if (targetDestination.current) {
-                  const dx = targetDestination.current.x - currentPos.current.x;
-                  const dy = targetDestination.current.y - currentPos.current.y;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
+  // 1. Pārbaudi — vai nav jāmaina scene!
 
-                  if (dist > 0.01) {
-                    const STEP = 0.01; // kustības ātrums
-                    const step = Math.min(STEP, dist);
-                    const nx = currentPos.current.x + (dx / dist) * step;
-                    const ny = currentPos.current.y + (dy / dist) * step;
-                    if (!willCollide(nx, ny)) {
-                      mesh.position.set(nx, ny, 0);
-                      currentPos.current = { x: nx, y: ny };
+  if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN  && currentScene.exits.left !== null) {
+    goToScene(currentScene.exits.left, "left", playerPos.current.y);
+    console.log("[DEBUG] Kreisa mala sasniegta! Mainām scenu.");
+    return; // animācija šim ciklam stop — viss renderosies nākamajā
+  }
+  if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits.right !== null) {
+    goToScene(currentScene.exits.right, "right", playerPos.current.y);
+    return;
+  }
+  // (Atkārto ar TOP/BOTTOM, ja vajag)
 
-                      // Sprite virziens
-                      let dir;
-                      if (Math.abs(dx) > Math.abs(dy)) {
-                        dir = dx > 0 ? "right" : "left";
-                      } else {
-                        dir = dy > 0 ? "up" : "down";
-                      }
-                      spriteState.current.direction = dir;
+  // Kustības loģika
+  if (targetDestination.current) {
+    const dx = targetDestination.current.x - playerPos.current.x;
+    const dy = targetDestination.current.y - playerPos.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
 
-                      // Sprite frame animācija
-                      spriteState.current.frameTick++;
-                      if (spriteState.current.frameTick % 6 === 0) {
-                        let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
-                        spriteState.current.frame = WALK_FRAMES[idx];
-                      }
-                      setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
-                    } else {
-                      targetDestination.current = null; // Ja ir šķērslis, apstājas!
-                    }
-                  } else {
-                    targetDestination.current = null; // Sasniegts galamērķis
-                    spriteState.current.frame = 0;
-                    setSpriteFrame(spriteState.current.direction, 0);
-                  }
-                } else {
-                  // Idle frame, ja nestāv
-                  spriteState.current.frame = 0;
-                  setSpriteFrame(spriteState.current.direction, 0);
-                }
+    if (dist > 0.01) {
+      const STEP = 0.01;
+      const step = Math.min(STEP, dist);
+      const nx = playerPos.current.x + (dx / dist) * step;
+      const ny = playerPos.current.y + (dy / dist) * step;
 
-                // COIN pickup
-                if (!coin.current.taken) {
-                  const dx = currentPos.current.x - coin.current.x;
-                  const dy = currentPos.current.y - coin.current.y;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
-                  if (dist < CUBE_SIZE * 0.7) {
-                    setCoinCount(c => c + 1);
-                    coin.current.taken = true;
-                    if (coinRef.current) coinRef.current.visible = false;
-                    showDialog("Tu atradi 1 zelta monētu!", imageUris.coin, 2400);
-                  }
-                }
+      // Tagad PĒC robežas pārbaudes, tikai collision
+      if (!willCollide(nx, ny, currentScene.obstacles)) {
+        mesh.position.set(nx, ny, 0);
+        playerPos.current = { x: nx, y: ny };
 
-                renderer.render(scene, camera);
-                gl.endFrameEXP();
-                requestAnimationFrame(animate);
-              }
+        // Virziens
+        let dir;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          dir = dx > 0 ? "right" : "left";
+        } else {
+          dir = dy > 0 ? "up" : "down";
+        }
+        spriteState.current.direction = dir;
+
+        // Sprite frame
+        spriteState.current.frameTick++;
+        if (spriteState.current.frameTick % 6 === 0) {
+          let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
+          spriteState.current.frame = WALK_FRAMES[idx];
+        }
+        setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+      } else {
+        targetDestination.current = null;
+      }
+    } else {
+      targetDestination.current = null;
+      spriteState.current.frame = 0;
+      setSpriteFrame(spriteState.current.direction, 0);
+    }
+  } else {
+    spriteState.current.frame = 0;
+    setSpriteFrame(spriteState.current.direction, 0);
+  }
+
+  // Coin pickup utml (kā iepriekš)
+  // ...
+
+  renderer.render(scene, camera);
+  gl.endFrameEXP();
+  requestAnimationFrame(animate);
+}
               animate();
             }}
           />
@@ -213,6 +260,4 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
-  // Ja vēlāk vajag overlay/citus style
-});
+const styles = StyleSheet.create({});
