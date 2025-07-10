@@ -2,8 +2,8 @@ import * as FileSystem from "expo-file-system";
 
 // Definē attēlu nosaukumus un url
 export const IMAGES = {
-  player: "http://10.254.131.19:8000/player2.png",
-  coin:   "http://10.254.131.19:8000/coin.png",
+  player: "http://localhost:8000/player2.png",
+  coin:   "http://localhost:8000/coin.png",
   // pievieno citus pēc vajadzības
 };
 

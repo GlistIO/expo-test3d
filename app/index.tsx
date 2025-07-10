@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Pressable, Dimensions } from "react-native";
 import { GLView } from "expo-gl";
 import { TextureLoader, Renderer } from "expo-three";
 import * as THREE from "three";
@@ -37,6 +37,8 @@ export default function App() {
   const coinRef = useRef(null);
   const [imageUris, setImageUris] = useState(null);
   const [dialog, setDialog] = useState({ visible: false, text: "" });
+  const glViewRef = useRef(null);
+  const targetDestination = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -89,10 +91,27 @@ export default function App() {
     tex.offset.y = 1 - (row + 1) * (1 / SPRITE_ROWS);
   }
 
+function handleTap(locationX, locationY) {
+    const { width, height } = Dimensions.get("window");
+    const worldX = WORLD_LEFT + (locationX / width) * (WORLD_RIGHT - WORLD_LEFT);
+    const worldY = WORLD_TOP - (locationY / height) * (WORLD_TOP - WORLD_BOTTOM);
+
+    targetDestination.current = { x: worldX, y: worldY };
+  }
+
   return (
     <View style={{ flex: 1 }}>
     <CoinCounter count={coinCount} />
-      <GLView
+    <View style={{ flex: 1 }}>
+    <Pressable
+          style={StyleSheet.absoluteFill}
+  onPress={(e) => {
+    const { locationX, locationY } = e.nativeEvent;
+    handleTap(locationX, locationY);
+  }}
+        >  
+    <GLView
+        ref={glViewRef}
         style={{ flex: 1 }}
         onContextCreate={async (gl) => {
           const renderer = new Renderer({ gl });
@@ -193,16 +212,16 @@ export default function App() {
               spriteState.current.frame = 0;
               setSpriteFrame(spriteState.current.direction, 0);
             }
-if (!coin.current.taken) {
-  const dx = currentPos.current.x - coin.current.x;
-  const dy = currentPos.current.y - coin.current.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < CUBE_SIZE * 0.7) {
-    setCoinCount(c => c + 1);
-    coin.current.taken = true;
-    if (coinRef.current) coinRef.current.visible = false;
-  }
-}
+		if (!coin.current.taken) {
+		  const dx = currentPos.current.x - coin.current.x;
+		  const dy = currentPos.current.y - coin.current.y;
+		  const dist = Math.sqrt(dx * dx + dy * dy);
+		  if (dist < CUBE_SIZE * 0.7) {
+		    setCoinCount(c => c + 1);
+		    coin.current.taken = true;
+		    if (coinRef.current) coinRef.current.visible = false;
+		  }
+		}
             renderer.render(scene, camera);
             gl.endFrameEXP();
             requestAnimationFrame(animate);
@@ -210,6 +229,8 @@ if (!coin.current.taken) {
           animate();
         }}
       />
+     </Pressable>
+     </View>
       <GameDialog
 	  visible={dialog.visible}
 	  text={dialog.text}
@@ -217,12 +238,6 @@ if (!coin.current.taken) {
 	  timeout={dialog.timeout || 2200}
 	  onHide={() => setDialog({ ...dialog, visible: false })}
 	/>
-      <View style={styles.controls}>
-        <MoveButton direction="left" onMove={move}>←</MoveButton>
-        <MoveButton direction="up" onMove={move}>↑</MoveButton>
-        <MoveButton direction="down" onMove={move}>↓</MoveButton>
-        <MoveButton direction="right" onMove={move}>→</MoveButton>
-      </View>
     </View>
   );
 }
