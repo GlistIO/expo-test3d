@@ -189,72 +189,69 @@ console.log('currentScene:', scenes[sceneIndex]);
               meshRef.current = mesh;
 
               function animate() {
-  // 1. Pārbaudi — vai nav jāmaina scene!
+		  // 1. Pārbaudi — vai nav jāmaina scene!
 
-  if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN  && currentScene.exits.left !== null) {
-    goToScene(currentScene.exits.left.scene, "left", playerPos.current.y);
-    console.log("[DEBUG] Kreisa mala sasniegta! Mainām scenu.");
-    return; // animācija šim ciklam stop — viss renderosies nākamajā
-  }
-  if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits.right !== null) {
-    goToScene(currentScene.exits.right.scene, "right", playerPos.current.y);
-    return;
-  }
-  // (Atkārto ar TOP/BOTTOM, ja vajag)
+		  if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN  && currentScene.exits.left !== null) {
+		    goToScene(currentScene.exits.left.scene, "left", playerPos.current.y);
+		    console.log("[DEBUG] Kreisa mala sasniegta! Mainām scenu.");
+		    return; // animācija šim ciklam stop — viss renderosies nākamajā
+		  }
+		  if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits.right !== null) {
+		    goToScene(currentScene.exits.right.scene, "right", playerPos.current.y);
+		    return;
+		  }
+		  // (Atkārto ar TOP/BOTTOM, ja vajag)
 
-  // Kustības loģika
-  if (targetDestination.current) {
-    const dx = targetDestination.current.x - playerPos.current.x;
-    const dy = targetDestination.current.y - playerPos.current.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+		  // Kustības loģika
+		  if (targetDestination.current) {
+		    const dx = targetDestination.current.x - playerPos.current.x;
+		    const dy = targetDestination.current.y - playerPos.current.y;
+		    const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist > 0.01) {
-      const STEP = 0.01;
-      const step = Math.min(STEP, dist);
-      const nx = playerPos.current.x + (dx / dist) * step;
-      const ny = playerPos.current.y + (dy / dist) * step;
+		    if (dist > 0.01) {
+		      const STEP = 0.01;
+		      const step = Math.min(STEP, dist);
+		      const nx = playerPos.current.x + (dx / dist) * step;
+		      const ny = playerPos.current.y + (dy / dist) * step;
 
-      // Tagad PĒC robežas pārbaudes, tikai collision
-      if (!willCollide(nx, ny, currentScene.obstacles)) {
-        mesh.position.set(nx, ny, 0);
-        playerPos.current = { x: nx, y: ny };
+		      // Tagad PĒC robežas pārbaudes, tikai collision
+		      if (!willCollide(nx, ny, currentScene.obstacles)) {
+		        mesh.position.set(nx, ny, 0);
+		        playerPos.current = { x: nx, y: ny };
 
-        // Virziens
-        let dir;
-        if (Math.abs(dx) > Math.abs(dy)) {
-          dir = dx > 0 ? "right" : "left";
-        } else {
-          dir = dy > 0 ? "up" : "down";
-        }
-        spriteState.current.direction = dir;
+		        // Virziens
+		        let dir;
+		        if (Math.abs(dx) > Math.abs(dy)) {
+		          dir = dx > 0 ? "right" : "left";
+		        } else {
+		          dir = dy > 0 ? "up" : "down";
+		        }
+		        spriteState.current.direction = dir;
 
-        // Sprite frame
-        spriteState.current.frameTick++;
-        if (spriteState.current.frameTick % 6 === 0) {
-          let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
-          spriteState.current.frame = WALK_FRAMES[idx];
-        }
-        setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
-      } else {
-        targetDestination.current = null;
-      }
-    } else {
-      targetDestination.current = null;
-      spriteState.current.frame = 0;
-      setSpriteFrame(spriteState.current.direction, 0);
-    }
-  } else {
-    spriteState.current.frame = 0;
-    setSpriteFrame(spriteState.current.direction, 0);
-  }
+		        // Sprite frame
+		        spriteState.current.frameTick++;
+		        if (spriteState.current.frameTick % 6 === 0) {
+		          let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
+		          spriteState.current.frame = WALK_FRAMES[idx];
+		        }
+		        setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+		      } else {
+		        targetDestination.current = null;
+		      }
+		    } else {
+		      targetDestination.current = null;
+		      spriteState.current.frame = 0;
+		      setSpriteFrame(spriteState.current.direction, 0);
+		    }
+		  } else {
+		    spriteState.current.frame = 0;
+		    setSpriteFrame(spriteState.current.direction, 0);
+		  }
 
-  // Coin pickup utml (kā iepriekš)
-  // ...
-
-  renderer.render(scene, camera);
-  gl.endFrameEXP();
-  requestAnimationFrame(animate);
-}
+		  renderer.render(scene, camera);
+		  gl.endFrameEXP();
+		  requestAnimationFrame(animate);
+		}
               animate();
             }}
           />
