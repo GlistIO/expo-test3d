@@ -12,15 +12,15 @@ export default function GameWorld({
   currentScene,
   imageUris,
   playerPos,
-  coins,
-  onCoinPickup, // <= Pievienots!
+  pickups,
+  onPickup,
   goToScene,
   targetDestination,
 }) {
   const meshRef = useRef(null);
   const spriteState = useRef({ direction: "down", frame: 0, frameTick: 0 });
   const textureRef = useRef(null);
-  const coinRefs = useRef([]);
+  const pickupRefs = useRef([]);
   const pickupBuffer = useRef([]); // nepieļauj dubult-pickup per frame
 
   function setSpriteFrame(dir, frame) {
@@ -61,25 +61,32 @@ export default function GameWorld({
           obs.position.set(obj.x, obj.y, 0);
           scene.add(obs);
         });
+	
+	// Ielādē unikālus tekstūras tikai 1x katram tipam
+        const loadedTextures = {};
+        for (const item of pickups) {
+          if (!loadedTextures[item.type]) {
+            loadedTextures[item.type] = await new TextureLoader().loadAsync({
+              uri: imageUris[item.type],
+            });
+            loadedTextures[item.type].magFilter = THREE.NearestFilter;
+          }
+        }
 
-        // Coin(s)
-        const coinTexture = await new TextureLoader().loadAsync({ uri: imageUris.coin });
-        coinTexture.magFilter = THREE.NearestFilter;
-
-        coins.forEach((c, i) => {
-          if (c.taken) return;
-          const coinMaterial = new THREE.MeshBasicMaterial({
-            map: coinTexture,
+        pickups.forEach((item, i) => {
+          if (item.taken) return;
+          const mat = new THREE.MeshBasicMaterial({
+            map: loadedTextures[item.type],
             transparent: true,
           });
-          const coinMesh = new THREE.Mesh(
+          const mesh = new THREE.Mesh(
             new THREE.PlaneGeometry(CUBE_SIZE * 2, CUBE_SIZE * 1),
-            coinMaterial
+            mat
           );
-          coinMesh.position.set(c.x, c.y, 0);
-          coinMesh.visible = true;
-          scene.add(coinMesh);
-          coinRefs.current[i] = coinMesh;
+          mesh.position.set(item.x, item.y, 0);
+          mesh.visible = true;
+          scene.add(mesh);
+          pickupRefs.current[i] = mesh;
         });
 
         // PLAYER MESH
@@ -151,15 +158,14 @@ export default function GameWorld({
             setSpriteFrame(spriteState.current.direction, 0);
           }
 
-          // ==== SAFE COIN PICKUP ====
-          coins.forEach((c, i) => {
-            if (c.taken) return;
-            const dx = playerPos.current.x - c.x;
-            const dy = playerPos.current.y - c.y;
+          pickups.forEach((p, i) => {
+            if (p.taken) return;
+            const dx = playerPos.current.x - p.x;
+            const dy = playerPos.current.y - p.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < CUBE_SIZE * 0.7 && !pickupBuffer.current.includes(i)) {
               pickupBuffer.current.push(i);
-              setTimeout(() => onCoinPickup(i), 0); // callback no parenta!
+              setTimeout(() => onPickup(i, p.type), 0);
             }
           });
 

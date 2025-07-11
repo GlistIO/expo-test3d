@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { View, StyleSheet, Pressable, Dimensions } from "react-native";
 import { downloadAllImages } from "./imageAssets";
-import CoinCounter from "./components/CoinCounter";
+import PickupCounter from "./components/PickupCounter";
 import GameDialog from "./components/GameDialog";
 import useSceneManager from "./hooks/useSceneManager";
 import GameWorld from "./components/GameWorld";
@@ -14,15 +14,16 @@ export default function App() {
   const {
     currentScene,
     sceneIndex,
-    coinCount,
+    pickupCounts,
+    pickups,
+    setPickups,
+    setPickupCount,
     playerPos,
-    coins,
     goToScene,
-    setCoinCount,
     setSceneIndex,
-    setCoins,
     targetDestination,
     handleTap,
+    handlePickup,
   } = useSceneManager();
 
   useEffect(() => {
@@ -37,16 +38,17 @@ export default function App() {
   function showDialog(text, icon = null, timeout = 2000, background = null) {
     setDialog({ visible: true, text, icon, timeout, background });
   }
-  
-  function handleCoinPickup(idx) {
-    setCoins(prev => prev.map((c, i) => i === idx ? { ...c, taken: true } : c));
-    setCoinCount(c => c + 1);
-    showDialog("Tu atradi 1 zelta monētu!", imageUris.coin, 2200);
- }
 
   return (
     <View style={{ flex: 1 }}>
-      <CoinCounter count={coinCount} />
+<PickupCounter
+  pickups={pickupCounts}
+  icons={{
+    coin: imageUris.coin,
+    key: imageUris.key,
+    // vēl citi tipi ja vajag
+  }}
+/>
       <View style={{ flex: 1 }}>
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -60,12 +62,10 @@ export default function App() {
             currentScene={currentScene}
             imageUris={imageUris}
             playerPos={playerPos}
-            coins={coins}
-            setCoins={setCoins}
-            onCoinPickup={handleCoinPickup}
+            pickups={pickups}
+	    onPickup={handlePickup}
             goToScene={goToScene}
             targetDestination={targetDestination}
-            setCoinCount={setCoinCount}
             showDialog={showDialog}
           />
         </Pressable>

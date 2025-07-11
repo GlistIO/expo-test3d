@@ -4,7 +4,8 @@ import * as FileSystem from "expo-file-system";
 export const IMAGES = {
   player: "http://localhost:8000/player2.png",
   coin:   "http://localhost:8000/coin.png",
-  // pievieno citus pēc vajadzības
+  key: "http://localhost:8000/key.png",
+// pievieno citus pēc vajadzības
 };
 
 // Funkcija, kas lejupielādē visus attēlus un atgriež { key: localUri }
