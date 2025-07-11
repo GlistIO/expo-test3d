@@ -13,16 +13,15 @@ export default function GameWorld({
   imageUris,
   playerPos,
   coins,
-  setCoins,
+  onCoinPickup, // <= Pievienots!
   goToScene,
   targetDestination,
-  setCoinCount,
-  showDialog,
 }) {
   const meshRef = useRef(null);
   const spriteState = useRef({ direction: "down", frame: 0, frameTick: 0 });
   const textureRef = useRef(null);
   const coinRefs = useRef([]);
+  const pickupBuffer = useRef([]); // nepieļauj dubult-pickup per frame
 
   function setSpriteFrame(dir, frame) {
     const tex = textureRef.current;
@@ -152,7 +151,17 @@ export default function GameWorld({
             setSpriteFrame(spriteState.current.direction, 0);
           }
 
-          // Coin pickup utml. (vari nodalīt arī atsevišķā utilī)
+          // ==== SAFE COIN PICKUP ====
+          coins.forEach((c, i) => {
+            if (c.taken) return;
+            const dx = playerPos.current.x - c.x;
+            const dy = playerPos.current.y - c.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < CUBE_SIZE * 0.7 && !pickupBuffer.current.includes(i)) {
+              pickupBuffer.current.push(i);
+              setTimeout(() => onCoinPickup(i), 0); // callback no parenta!
+            }
+          });
 
           renderer.render(scene, camera);
           gl.endFrameEXP();

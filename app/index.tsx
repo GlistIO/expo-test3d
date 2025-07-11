@@ -37,6 +37,12 @@ export default function App() {
   function showDialog(text, icon = null, timeout = 2000, background = null) {
     setDialog({ visible: true, text, icon, timeout, background });
   }
+  
+  function handleCoinPickup(idx) {
+    setCoins(prev => prev.map((c, i) => i === idx ? { ...c, taken: true } : c));
+    setCoinCount(c => c + 1);
+    showDialog("Tu atradi 1 zelta monētu!", imageUris.coin, 2200);
+ }
 
   return (
     <View style={{ flex: 1 }}>
@@ -56,6 +62,7 @@ export default function App() {
             playerPos={playerPos}
             coins={coins}
             setCoins={setCoins}
+            onCoinPickup={handleCoinPickup}
             goToScene={goToScene}
             targetDestination={targetDestination}
             setCoinCount={setCoinCount}
