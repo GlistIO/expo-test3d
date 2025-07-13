@@ -104,11 +104,17 @@ export default function GameWorld({
 
         function animate() {
           // SCENE CHANGE
-          if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN && currentScene.exits.left !== null) {
+          if (playerPos.current.x <= WORLD_LEFT + EXIT_MARGIN && currentScene.exits?.left !== null) {
+            const exitData = currentScene.exits.left;
+            const targetScene = typeof exitData === 'number' ? exitData : exitData.scene;
+            console.log('[SCENE DEBUG] Left exit triggered, going to scene:', targetScene);
             goToScene(currentScene.exits.left.scene, "left", playerPos.current.y);
             return;
           }
-          if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits.right !== null) {
+          if (playerPos.current.x >= WORLD_RIGHT - EXIT_MARGIN && currentScene.exits?.right !== null) {
+            const exitData = currentScene.exits.right;
+            const targetScene = typeof exitData === 'number' ? exitData : exitData.scene;
+            console.log('[SCENE DEBUG] Right exit triggered, going to scene:', targetScene);
             goToScene(currentScene.exits.right.scene, "right", playerPos.current.y);
             return;
           }
@@ -178,3 +184,4 @@ export default function GameWorld({
     />
   );
 }
+

@@ -17,7 +17,7 @@ export const OBSTACLE = { x: 0.5, y: 0, size: OBSTACLE_SIZE };
 export const SPRITE_COLS = 4;
 export const SPRITE_ROWS = 4;
 
-export const EXIT_MARGIN = 0.2;
+export const EXIT_MARGIN = 0.3;
 
 export const DIRECTIONS = {
   up: 3,

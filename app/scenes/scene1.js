@@ -12,9 +12,10 @@ export default {
   ],
   exits: {
     left: null,  // pārslēdz uz scene1, ja iet pa kreisi
-    right: 0,
+    right: { scene: 0, yRange: [-0.5, 0.5] },
     top: null,
     bottom: null,
   },
   bg: null, // ja gribi fonu
 };
+
