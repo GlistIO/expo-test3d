@@ -1,10 +1,14 @@
 import React from "react";
 import { View, Text, Image } from "react-native";
 
-// pickupCounts: { coin: 2, key: 1, ... }
-// imageUris: { coin: "...", key: "...", ... }
-
 export default function PickupCounter({ pickupCounts = {}, imageUris = {} }) {
+  // Only show types that have been collected (count > 0)
+  const collectedTypes = Object.entries(pickupCounts).filter(([type, count]) => count > 0);
+  
+  if (collectedTypes.length === 0) {
+    return null; // Don't show counter if nothing collected
+  }
+
   return (
     <View style={{
       position: "absolute",
@@ -14,7 +18,7 @@ export default function PickupCounter({ pickupCounts = {}, imageUris = {} }) {
       gap: 16,
       zIndex: 100,
     }}>
-      {Object.entries(pickupCounts).map(([type, count]) => (
+      {collectedTypes.map(([type, count]) => (
         <View
           key={type}
           style={{
@@ -31,7 +35,7 @@ export default function PickupCounter({ pickupCounts = {}, imageUris = {} }) {
             source={
               imageUris[type]
                 ? { uri: imageUris[type] }
-                : require("../../assets/coin.png")
+                : require("../../assets/coin.png") // fallback
             }
             style={{ width: 28, height: 28, marginRight: 6 }}
             resizeMode="contain"

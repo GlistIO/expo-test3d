@@ -67,14 +67,10 @@ export default function App() {
         </Pressable>
       </View>
       
-<PickupCounter
-  pickups={pickupCounts}
-  icons={{
-    coin: imageUris.coin,
-    key: imageUris.key,
-    // vēl citi tipi ja vajag
-  }}
-/>
+      <PickupCounter
+        pickupCounts={pickupCounts}
+        imageUris={imageUris}
+      />
       <View style={{ flex: 1 }}>
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -89,7 +85,7 @@ export default function App() {
             imageUris={imageUris}
             playerPos={playerPos}
             pickups={pickups}
-	    onPickup={handlePickup}
+            onPickup={handlePickup}
             goToScene={goToScene}
             targetDestination={targetDestination}
             showDialog={showDialog}
@@ -106,3 +102,4 @@ export default function App() {
     </View>
   );
 }
+

@@ -5,7 +5,7 @@ export const WORLD_BOTTOM = -2;
 
 export const CUBE_SIZE = 0.3;
 export const OBSTACLE_SIZE = 0.5;
-export const STEP = 0.2;
+export const STEP = 0.02;
 
 export const MIN_X = WORLD_LEFT + CUBE_SIZE / 2;
 export const MAX_X = WORLD_RIGHT - CUBE_SIZE / 2;

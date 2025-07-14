@@ -2,14 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEYS = {
   PICKUP_COUNTS: 'game_pickup_counts',
-  SCENE_PICKUP_STATES: 'game_scene_pickup_states',
+  COLLECTED_PICKUPS: 'game_collected_pickups',
   CURRENT_SCENE: 'game_current_scene',
   PLAYER_POSITION: 'game_player_position',
 };
 
 export interface GameData {
   pickupCounts: Record<string, number>;
-  scenePickupStates: Record<number, any[]>;
+  collectedPickups: string[];
   currentScene: number;
   playerPosition: { x: number; y: number };
 }
@@ -29,7 +29,7 @@ export async function saveGameData(data: GameData): Promise<void> {
 
     const promises = [
       AsyncStorage.setItem(STORAGE_KEYS.PICKUP_COUNTS, JSON.stringify(data.pickupCounts)),
-      AsyncStorage.setItem(STORAGE_KEYS.SCENE_PICKUP_STATES, JSON.stringify(data.scenePickupStates)),
+      AsyncStorage.setItem(STORAGE_KEYS.COLLECTED_PICKUPS, JSON.stringify(data.collectedPickups || [])),
       AsyncStorage.setItem(STORAGE_KEYS.CURRENT_SCENE, JSON.stringify(data.currentScene)),
       AsyncStorage.setItem(STORAGE_KEYS.PLAYER_POSITION, JSON.stringify(data.playerPosition)),
     ];
@@ -44,20 +44,20 @@ export async function saveGameData(data: GameData): Promise<void> {
 
 export async function loadGameData(): Promise<GameData | null> {
   try {
-    const [pickupCounts, scenePickupStates, currentScene, playerPosition] = await Promise.all([
+    const [pickupCounts, collectedPickups, currentScene, playerPosition] = await Promise.all([
       AsyncStorage.getItem(STORAGE_KEYS.PICKUP_COUNTS),
-      AsyncStorage.getItem(STORAGE_KEYS.SCENE_PICKUP_STATES),
+      AsyncStorage.getItem(STORAGE_KEYS.COLLECTED_PICKUPS),
       AsyncStorage.getItem(STORAGE_KEYS.CURRENT_SCENE),
       AsyncStorage.getItem(STORAGE_KEYS.PLAYER_POSITION),
     ]);
 
-    if (!pickupCounts || !scenePickupStates || !currentScene || !playerPosition) {
+    if (!pickupCounts || !currentScene || !playerPosition) {
       return null; // No saved data found
     }
 
     return {
       pickupCounts: JSON.parse(pickupCounts),
-      scenePickupStates: JSON.parse(scenePickupStates),
+      collectedPickups: collectedPickups ? JSON.parse(collectedPickups) : [],
       currentScene: JSON.parse(currentScene),
       playerPosition: JSON.parse(playerPosition),
     };

@@ -19,27 +19,18 @@ export default function useSceneManager() {
   const [isLoading, setIsLoading] = useState(true);
   const playerPos = useRef(scenes[0]?.playerStart || { x: 0, y: 0 });
   
-  // Store pickup state for each scene separately
-  const scenePickupStates = useRef({});
+  // Store which pickups have been collected globally (by their unique ID)
+  const collectedPickups = useRef(new Set());
   
-  // Initialize pickup state for current scene
-  const initializeScenePickups = (sceneIdx) => {
-    debugLog(`Initializing pickups for scene ${sceneIdx}`);
-    if (!scenePickupStates.current[sceneIdx]) {
-      debugLog(`Creating new pickup state for scene ${sceneIdx}`);
-      // Create a deep copy of the scene's pickups with taken: false
-      scenePickupStates.current[sceneIdx] = (scenes[sceneIdx]?.pickups || []).map(p => ({ 
-        ...p, 
-        taken: false 
-      }));
-      debugLog(`Scene ${sceneIdx} pickups initialized:`, scenePickupStates.current[sceneIdx]);
-    } else {
-      debugLog(`Using existing pickup state for scene ${sceneIdx}:`, scenePickupStates.current[sceneIdx]);
-    }
-    return scenePickupStates.current[sceneIdx];
+  // Get current scene's available pickups (filtered by what hasn't been collected)
+  const getCurrentScenePickups = (sceneIdx) => {
+    const scene = scenes[sceneIdx];
+    if (!scene || !scene.pickups) return [];
+    
+    return scene.pickups.filter(pickup => !collectedPickups.current.has(pickup.id));
   };
 
-  const [pickups, setPickups] = useState(() => initializeScenePickups(0));
+  const [pickups, setPickups] = useState(() => getCurrentScenePickups(0));
   const targetDestination = useRef(null);
 
   // Load saved game data on app start
@@ -64,13 +55,17 @@ export default function useSceneManager() {
         // Restore saved state
         setSceneIndex(savedData.currentScene);
         setPickupCounts(savedData.pickupCounts);
-        scenePickupStates.current = savedData.scenePickupStates;
         playerPos.current = savedData.playerPosition;
         
-        debugLog(`Restored to scene ${savedData.currentScene} with pickup states:`, savedData.scenePickupStates);
+        // Restore collected pickups
+        if (savedData.collectedPickups) {
+          collectedPickups.current = new Set(savedData.collectedPickups);
+        }
         
-        // Initialize pickups for the current scene
-        const scenePickups = initializeScenePickups(savedData.currentScene);
+        debugLog(`Restored to scene ${savedData.currentScene} with collected pickups:`, Array.from(collectedPickups.current));
+        
+        // Set pickups for the current scene
+        const scenePickups = getCurrentScenePickups(savedData.currentScene);
         setPickups([...scenePickups]);
         
         console.log('Game data loaded successfully');
@@ -78,13 +73,13 @@ export default function useSceneManager() {
         debugLog('No saved data found, starting fresh');
         // No saved data, start fresh
         console.log('No saved game found, starting fresh');
-        const scenePickups = initializeScenePickups(0);
+        const scenePickups = getCurrentScenePickups(0);
         setPickups([...scenePickups]);
       }
     } catch (error) {
       console.error('Failed to load saved game:', error);
       // Fallback to fresh start
-      const scenePickups = initializeScenePickups(0);
+      const scenePickups = getCurrentScenePickups(0);
       setPickups([...scenePickups]);
     } finally {
       setIsLoading(false);
@@ -102,13 +97,13 @@ export default function useSceneManager() {
       debugLog('Saving game state:', {
         currentScene: sceneIndex,
         pickupCounts,
-        scenePickupStates: scenePickupStates.current,
+        collectedPickups: Array.from(collectedPickups.current),
         playerPosition: playerPos.current
       });
 
       const gameData: GameData = {
         pickupCounts,
-        scenePickupStates: scenePickupStates.current,
+        collectedPickups: Array.from(collectedPickups.current),
         currentScene: sceneIndex,
         playerPosition: playerPos.current,
       };
@@ -124,17 +119,20 @@ export default function useSceneManager() {
       debugLog(`Scene changed to ${sceneIndex}`);
       debugLog('Player position before change:', playerPos.current);
       
-      playerPos.current = scenes[sceneIndex]?.playerStart || { x: 0, y: 0 };
-      debugLog('Player position after reset:', playerPos.current);
+      // Only reset player position if it's a fresh scene load (not from saved game)
+      if (!playerPos.current || (playerPos.current.x === 0 && playerPos.current.y === 0)) {
+        playerPos.current = scenes[sceneIndex]?.playerStart || { x: 0, y: 0 };
+        debugLog('Player position reset to start:', playerPos.current);
+      }
       
-      // Load the pickup state for this scene, or initialize if first time
-      const scenePickups = initializeScenePickups(sceneIndex);
+      // Load the available pickups for this scene
+      const scenePickups = getCurrentScenePickups(sceneIndex);
       debugLog(`Setting pickups for scene ${sceneIndex}:`, scenePickups);
       
-      setPickups(scenePickups.map(p => ({ ...p }))); // Create deep copy to trigger re-render
+      setPickups([...scenePickups]); // Create copy to trigger re-render
       targetDestination.current = null;
       
-      debugLog('All scene pickup states:', scenePickupStates.current);
+      debugLog('Collected pickups:', Array.from(collectedPickups.current));
     }
   }, [sceneIndex, isLoading]);
 
@@ -142,7 +140,7 @@ export default function useSceneManager() {
     debugLog(`=== SCENE TRANSITION ===`);
     debugLog(`From scene ${sceneIndex} to scene ${newSceneIdx}`);
     debugLog(`Entry point: ${entry}, Y position: ${y}`);
-    debugLog('Current pickup states before transition:', scenePickupStates.current);
+    debugLog('Current collected pickups before transition:', Array.from(collectedPickups.current));
     
     setSceneIndex(newSceneIdx);
     let newX;
@@ -163,32 +161,28 @@ export default function useSceneManager() {
     targetDestination.current = { x: worldX, y: worldY };
   }
 
-  function handlePickup(pickupIndex, type) {
+  function handlePickup(pickup) {
     debugLog(`=== PICKUP EVENT ===`);
-    debugLog(`Scene ${sceneIndex}, pickup ${pickupIndex}, type: ${type}`);
-    debugLog('Pickup states before:', scenePickupStates.current[sceneIndex]);
+    debugLog(`Scene ${sceneIndex}, pickup ID: ${pickup.id}, type: ${pickup.type}, value: ${pickup.value}`);
+    debugLog('Collected pickups before:', Array.from(collectedPickups.current));
     
-    // Update the pickup state for current scene (make sure we're modifying the right scene)
-    if (scenePickupStates.current[sceneIndex] && scenePickupStates.current[sceneIndex][pickupIndex]) {
-      scenePickupStates.current[sceneIndex][pickupIndex].taken = true;
-      debugLog(`Marked pickup ${pickupIndex} as taken in scene ${sceneIndex}`);
-    }
+    // Mark this pickup as collected globally
+    collectedPickups.current.add(pickup.id);
+    debugLog('Collected pickups after:', Array.from(collectedPickups.current));
     
-    debugLog('Pickup states after:', scenePickupStates.current[sceneIndex]);
+    // Remove from current scene's pickups
+    setPickups(prev => prev.filter(p => p.id !== pickup.id));
     
-    // Update the local pickups state to trigger re-render
-    setPickups(prev => prev.map((p, i) => 
-      i === pickupIndex ? { ...p, taken: true } : p
-    ));
-    
-    // Update pickup counts
+    // Update pickup counts (add the value, not just 1)
     setPickupCounts(counts => ({
       ...counts,
-      [type]: (counts[type] || 0) + 1,
+      [pickup.type]: (counts[pickup.type] || 0) + (pickup.value || 1),
     }));
     
-    debugLog(`Updated pickup counts:`, { ...pickupCounts, [type]: (pickupCounts[type] || 0) + 1 });
+    debugLog(`Updated pickup counts:`, { ...pickupCounts, [pickup.type]: (pickupCounts[pickup.type] || 0) + (pickup.value || 1) });
     debugLog(`=== END PICKUP EVENT ===`);
+    
+    return pickup; // Return the pickup for use in GameWorld (for dialog)
   }
 
   return {

@@ -6,7 +6,7 @@ import {
   WORLD_LEFT, WORLD_RIGHT, WORLD_TOP, WORLD_BOTTOM,
   SPRITE_COLS, SPRITE_ROWS, WALK_FRAMES, DIRECTIONS, CUBE_SIZE, EXIT_MARGIN
 } from "../constants";
-import { willCollide } from "../utils";
+import { willCollide, getSafeDestination } from "../utils";
 
 export default function GameWorld({
   currentScene,
@@ -121,45 +121,52 @@ export default function GameWorld({
 
           // MOVEMENT
           if (targetDestination.current) {
-            const dx = targetDestination.current.x - playerPos.current.x;
-            const dy = targetDestination.current.y - playerPos.current.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist > 0.01) {
-              const STEP = 0.01;
-              const step = Math.min(STEP, dist);
-              const nx = playerPos.current.x + (dx / dist) * step;
-              const ny = playerPos.current.y + (dy / dist) * step;
-
-              if (!willCollide(nx, ny, currentScene.obstacles)) {
-                mesh.position.set(nx, ny, 0);
-                playerPos.current = { x: nx, y: ny };
-
-                // Virziens
-                let dir;
-                if (Math.abs(dx) > Math.abs(dy)) {
-                  dir = dx > 0 ? "right" : "left";
-                } else {
-                  dir = dy > 0 ? "up" : "down";
-                }
-                spriteState.current.direction = dir;
-
-                // Sprite frame
-                spriteState.current.frameTick++;
-                if (spriteState.current.frameTick % 6 === 0) {
-                  let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
-                  spriteState.current.frame = WALK_FRAMES[idx];
-                }
-                setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+            const newPos = getSafeDestination(
+              playerPos.current, 
+              targetDestination.current, 
+              currentScene.obstacles
+            );
+            
+            // Check if we made any progress
+            const dx = newPos.x - playerPos.current.x;
+            const dy = newPos.y - playerPos.current.y;
+            const moved = Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001;
+            
+            if (moved) {
+              mesh.position.set(newPos.x, newPos.y, 0);
+              playerPos.current = newPos;
+              
+              // Determine direction for sprite animation
+              let dir;
+              if (Math.abs(dx) > Math.abs(dy)) {
+                dir = dx > 0 ? "right" : "left";
               } else {
+                dir = dy > 0 ? "up" : "down";
+              }
+              spriteState.current.direction = dir;
+              
+              // Animate sprite
+              spriteState.current.frameTick++;
+              if (spriteState.current.frameTick % 6 === 0) {
+                let idx = Math.floor(spriteState.current.frameTick / 6) % WALK_FRAMES.length;
+                spriteState.current.frame = WALK_FRAMES[idx];
+              }
+              setSpriteFrame(spriteState.current.direction, spriteState.current.frame);
+              
+              // Check if we've reached the target
+              const targetDx = targetDestination.current.x - newPos.x;
+              const targetDy = targetDestination.current.y - newPos.y;
+              const distToTarget = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+              
+              if (distToTarget < 0.05) {
                 targetDestination.current = null;
               }
             } else {
+              // No movement possible, clear target
               targetDestination.current = null;
-              spriteState.current.frame = 0;
-              setSpriteFrame(spriteState.current.direction, 0);
             }
           } else {
+            // Not moving, show idle frame
             spriteState.current.frame = 0;
             setSpriteFrame(spriteState.current.direction, 0);
           }
